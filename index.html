@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spreadsheet Table</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      border: 1px solid black;
+    }
+
+    td,
+    th {
+      border: 1px solid black;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    async function fetchSpreadsheetData() {
+      return {}
+    }
+
+    function getColumnLabel(index) {
+      let label = "";
+      while (index >= 0) {
+        label = String.fromCharCode((index % 26) + 65) + label;
+        index = Math.floor(index / 26) - 1;
+      }
+      return label;
+    }
+
+    function formatCurrency(value, currency) {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: currency }).format(value);
+    }
+
+    function evaluateFormula(formula, namedValues) {
+      try {
+        const expression = formula.replace(/of:=/g, "").replace(/\b(\w+)\b/g, (match) => namedValues[match] ?? match);
+        return eval(expression);
+      } catch (error) {
+        return "N/A";
+      }
+    }
+
+    async function generateTableFromSpreadsheet() {
+      const data = await fetchSpreadsheetData();
+      const tableData = data.tables[0];
+      if (!tableData) return;
+
+      const namedValues = {};
+      data.namedExpressions.namedRanges.forEach(({ name, baseCellAddress }) => {
+        const match = baseCellAddress.match(/\$(\w+)\.\$(\w+)\$(\d+)/);
+        if (match) {
+          const [, sheetName, col, row] = match;
+          const table = data.tables.find(t => t.name === sheetName);
+          const cell = table?.rows[row - 1]?.cells[col.charCodeAt(0) - 65];
+          if (cell && cell.value) namedValues[name] = cell.value;
+        }
+      });
+
+      const table = document.createElement("table");
+      const headerRow = document.createElement("tr");
+      headerRow.appendChild(document.createElement("th"));
+      tableData.rows[0].cells.forEach((_, colIndex) => {
+        const th = document.createElement("th");
+        th.textContent = getColumnLabel(colIndex);
+        headerRow.appendChild(th);
+      });
+      table.appendChild(headerRow);
+
+      tableData.rows.forEach((row, rowIndex) => {
+        const tr = document.createElement("tr");
+        const rowLabel = document.createElement("th");
+        rowLabel.textContent = rowIndex + 1;
+        tr.appendChild(rowLabel);
+
+        row.cells.forEach((cell) => {
+          const td = document.createElement("td");
+          if (cell.type === "currency" && cell.value) {
+            td.textContent = formatCurrency(cell.value, cell.currency || "USD");
+          } else if (cell.type === "percentage" && cell.formula) {
+            td.textContent = evaluateFormula(cell.formula, namedValues) + "%";
+          } else if (cell.formula) {
+            td.textContent = evaluateFormula(cell.formula, namedValues);
+          } else {
+            td.textContent = cell.text || cell.value || "";
+          }
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+
+      document.body.appendChild(table);
+    }
+
+    generateTableFromSpreadsheet();
+  </script>
+</body>
+
+</html>
